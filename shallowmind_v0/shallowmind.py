@@ -10,13 +10,87 @@ import json
 import os
 from time import sleep
 import random
+from collections import OrderedDict
 
 from TowerDefenseApi import *
     
+NUM_ACTION_TYPES = 6 # defend, attack, energy, destroy, tesla, iron curtain
     
 class ShallowMindBot:
     
     def __init__(self):
+        pass
+
+    def doDefense(self, api):
+        pass
+
+    def doAttack(self, api):
+        pass
+
+    def doEnergy(self, api):
+        pass
+
+    def doDestroy(self, api):
+        pass
+
+    def doTesla(self, api):
+        pass
+
+    def doIronCurtain(self, api):
+        pass
+
+    def computeStateFeatures(self, api):
+        stateFeatures = OrderedDict()
+
+        game_state = api.getGameState()
+
+        stateFeatures['round'] = game_state['gameDetails']['round']
+        stateFeatures['roundsRemaining'] = game_state['gameDetails']['maxRounds'] - stateFeatures['round']
+
+        player_A_state = None
+        player_B_state = None
+
+        for player_state in api.getGameState()['players']:
+            if player_state['player_type'] == 'A':
+                player_A_state = player_state
+            else:
+                player_B_state = player_state
+        
+        stateFeatures['playerAHealth'] = player_A_state['health']
+        stateFeatures['playerBHealth'] = player_B_state['health']
+        stateFeatures['playerAminusBHealth'] = player_A_state['health'] - player_B_state['health']
+
+        stateFeatures['countBattackingA']
+        stateFeatures['countBattackingAundefended']
+
+        """
+        		○ Round # (or rounds remaining)
+		○ Score differential
+        ○ health of me and opponent
+		○ Overall
+			§ Base's health
+		○ # rows with (for opponent and me)
+			§ Under attack
+			§ Attacking
+			§ Defense being built
+			§ Defended
+		○ Per-row?
+			§ Me
+				□ # Defending
+				□ # attacking
+				□ # energy
+				□ # Tesla
+				□ Defending is front?
+			§ Opponent
+				□ "
+		○ My energy balance
+		○ Opponent energy
+		○ Iron curtain active? (then don't have Telsa act?)
+        """
+
+        return stateFeatures
+
+    def computeActionTypeProbabilities(self, api):
         pass
         
     def doTurn(self, api):
@@ -38,15 +112,18 @@ class ShallowMindBot:
             4 : Tesla //not really considered in this sample
             5 : Iron Curtain //not used in this sample
         '''
-        #Some things you may want to print just to see the current state for debugging
-        #print(api.getGameState())
-        #print(api.getBuildingsStats())
-        #print(api.getMyself())
-        #print(api.getOpponent())
-        #print(api.getMyBuildings())
-
-        import pdb; pdb.set_trace()
         
+        # Compute state features
+
+        # Convert state features to probability of each action type
+
+        # Randomize to select action type
+
+        # Execute and return action type
+        
+
+
+
         lanes = []
         x, y, building = 0, 0, 0
         # check all lanes for an attack unit
@@ -68,21 +145,31 @@ class ShallowMindBot:
             # Chose a cell that is unoccupied in that lane
             building = 0
             y = random.choice(lanes)
-            x = random.choice(api.getUnOccupied(api.getMyBuildings()[i]))
+            #x = random.choice(api.getUnOccupied(api.getMyBuildings()[i]))
+            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
+        elif api.getMyself()['energy'] >= max(api.getBuildingsStats()['TESLA']['price'],api.iron_curtain_stats['price']):
+            # TODO: don't try to build Tesla when already have too many
+            # TODO: Also double check rules about iron curtain
+            building = random.choice([4,5])
+            y = random.randint(0, int(api.getGameWidth() / 2) - 1)
+            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
         # otherwise, build a random building type at a random unoccupied location
         # if you can afford the most expensive building between ATTACK, DEFENSE, and ENERGY building. This does not consider
         # The TESLA tower or account for the Iron Curtain
-        elif  api.getMyself()['energy'] >= max(api.getBuildingsStats()['ATTACK']['price'], 
+        elif api.getMyself()['energy'] >= max(api.getBuildingsStats()['ATTACK']['price'], 
                                                                     api.getBuildingsStats()['DEFENSE']['price'], 
                                                                     api.getBuildingsStats()['ENERGY']['price']):
+            # TODO: don't build where under attack
+            # TODO: different building strategies per building type
             building = random.choice([0, 1, 2])
-            x = random.randint(0, api.getGameHeight() - 1)
+            #x = random.randint(0, api.getGameHeight() - 1)
             y = random.randint(0, int(api.getGameWidth() / 2) - 1)
+            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
         else:
             #towerDefenseHelper.writeDoNothing()
             return api.createDoNothingCommand()
         
-       # towerDefenseHelper.writeCommand(x, y, building)
+        # towerDefenseHelper.writeCommand(x, y, building)
         return api.createCommand(x,y,building)
  
 

@@ -14,7 +14,7 @@ import random
 from TowerDefenseApi import *
     
     
-class ShallowMindBot:
+class StarterBot:
     
     def __init__(self):
         pass
@@ -41,11 +41,10 @@ class ShallowMindBot:
         #Some things you may want to print just to see the current state for debugging
         #print(api.getGameState())
         #print(api.getBuildingsStats())
-        #print(api.getMyself())
+        #print(api.getIronCurtainStats())
+        #print(api.getMyself()))
         #print(api.getOpponent())
         #print(api.getMyBuildings())
-
-        import pdb; pdb.set_trace()
         
         lanes = []
         x, y, building = 0, 0, 0
@@ -90,5 +89,5 @@ if __name__ == '__main__':
     from TowerDefense import *
     #This will load the game state and then call your doTurn function with an 
     #instance of the TowerDefenseApi to use in deciding your strategy for the turn
-    TowerDefense.run(ShallowMindBot())
+    TowerDefense.run(StarterBot())
     
