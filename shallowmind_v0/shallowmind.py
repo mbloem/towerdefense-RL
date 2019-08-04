@@ -12,7 +12,7 @@ import json
 import os
 from time import sleep
 import random
-from collections import OrderedDict
+from collections import OrderedDict, Set
 
 from TowerDefenseApi import *
 
@@ -142,14 +142,52 @@ class ShallowMindBot:
         stateFeatures['oppNumTelsa'] = sum([row_list.count(4) for row_list in opp_buildings])
         stateFeatures['myNumEnergy'] = sum([row_list.count(3) for row_list in my_buildings])
         stateFeatures['oppNumEnergy'] = sum([row_list.count(3) for row_list in opp_buildings])
+        stateFeatures['myNumAttack'] = sum([row_list.count(1) for row_list in my_buildings])
+        stateFeatures['oppNumAttack'] = sum([row_list.count(1) for row_list in opp_buildings])
+        stateFeatures['myNumDefense'] = sum([row_list.count(2) for row_list in my_buildings])
+        stateFeatures['oppNumDefense'] = sum([row_list.count(2) for row_list in opp_buildings])
 
         return stateFeatures
 
-    def computeActionTypeProbabilities(self, state_features):
-        # here is where the network will go
-        action_type_probabilities = np.ones(NUM_ACTION_TYPES)/NUM_ACTION_TYPES
+    def computePossibleActiontypes(self, stateFeatures, api):
+        possible_action_types = set(range(NUM_ACTION_TYPES))
 
-        return action_type_probabilities
+        # Any buildings to destroy?
+        if (
+            stateFeatures['myNumTelsa'] + stateFeatures['myNumEnergy'] + stateFeatures['myNumAttack'] + stateFeatures['myNumDefense']
+        ) == 0:
+            possible_action_types.remove(3)
+
+        # Able to do iron curtain?
+        if (~stateFeatures['myIronCurtainAvailable']) | (stateFeatures['myEnergy'] < api.game_state['gameDetails']['ironCurtainStats']['price']):
+            possible_action_types.remove(5)
+
+        # Able to do telsa?
+        if (stateFeatures['myNumTelsa'] > 2) | (stateFeatures['myEnergy'] < api.buildings_stats['TESLA']['price']):
+            possible_action_types.remove(4)
+
+        # Enough energy for attack?
+        if (stateFeatures['myEnergy'] < api.buildings_stats['ATTACK']['price']):
+            possible_action_types.remove(1)
+
+        # Enough energy for defense?
+        if (stateFeatures['myEnergy'] < api.buildings_stats['DEFENSE']['price']):
+            possible_action_types.remove(0)
+
+        # Enough energy for defense?
+        if (stateFeatures['myEnergy'] < api.buildings_stats['ENERGY']['price']):
+            possible_action_types.remove(2)
+
+        return sorted(list(possible_action_types))
+
+    def computeActionTypeProbabilities(self, state_features, api):
+        # determine possible actions
+        possible_action_types = self.computePossibleActiontypes(state_features, api)
+        
+        # here is where the network(s) will go
+        action_type_probabilities = np.ones(len(possible_action_types))/len(possible_action_types)
+
+        return possible_action_types, action_type_probabilities
         
     def doTurn(self, api):
         '''
@@ -175,14 +213,14 @@ class ShallowMindBot:
         state_features = self.computeStateFeatures(api)
 
         # Convert state features to probability of each action type
-        action_type_probabilities = self.computeActionTypeProbabilities(state_features)
+        possible_action_types, action_type_probabilities = self.computeActionTypeProbabilities(state_features, api)
 
         # Randomize to select action type
         action_type_choice = np.random.choice(
-            range(NUM_ACTION_TYPES),
+            possible_action_types,
             size=1,
             p=action_type_probabilities,
-        )
+        )[0]
 
         # Execute and return action type
         do_action_type_method = self.idx2actionType[action_type_choice]
