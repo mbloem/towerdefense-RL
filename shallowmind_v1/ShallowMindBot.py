@@ -18,14 +18,11 @@ import pickle
 
 from TowerDefenseApi import *
 
-resume = False
+resume = True
+training = True
 
 # hyperparameters to tune
 H = 15 # number of hidden layer neurons
-batch_size = 10 # used to perform a RMS prop param update every batch_size steps
-learning_rate = 1e-3 # learning rate used in RMS prop
-gamma = 0.99 # discount factor for reward
-decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 NUM_ACTION_TYPES = 7 # defend, attack, energy, destroy, tesla, iron curtain, do nothing
 
@@ -36,8 +33,13 @@ BUILDING_TO_IDX = {
     'defense': 2,
 }
 
-def sigmoid(x):
-    return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
+ACTION_TYPE_COMBOS = [
+    [6],
+    [2,6],
+    [0,1,2,6],
+    [0,1,2,4,5,6],
+    [0,1,2,4,6],
+]
 
 def softmax(x):
     """Compute softmax values for each sets of scores in x."""
@@ -61,33 +63,47 @@ class ShallowMindBot:
         }
 
         # model initialization
-        D = 28 # input dimensionality: 75x80 grid
+        D = 28 # input dimensionality
         if resume:
-            self.model = pickle.load(open('save.p', 'rb'))
+            self.model = pickle.load(open('model_params.p', 'rb'))
         else:
             self.model = {}
-        self.model['W1'] = np.random.randn(H,D) / (100*np.sqrt(D)) # "Xavier" initialization - Shape will be H x D
-        self.model['W2'] = np.random.randn(NUM_ACTION_TYPES,H) / (100*np.sqrt(H)) # Shape will be H
+            self.model['W1'] = np.random.randn(H,D) / (100*np.sqrt(D)) # "Xavier" initialization - Shape will be H x D
+            self.model['W2'] = np.random.randn(NUM_ACTION_TYPES,H) / (100*np.sqrt(H)) # Shape will be H
 
-    def policy_forward(self, stateFeatures):
+    def policy_forward(self, stateFeatures, action_type_combo):
         """This is a manual implementation of a forward prop"""
         x = np.array([float(val) for val in stateFeatures.values()])
         h = np.dot(self.model['W1'], x) # (H x D) . (D x 1) = (H x 1) (200 x 1)
         h[h<0] = 0 # ReLU introduces non-linearity
         logp = np.dot(self.model['W2'], h) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+        logp = logp[action_type_combo]
         p = softmax(logp)  # squashes output to  between 0 & 1 range
-        return p, h # return probability of taking action 2 (UP), and hidden state
+        return p, h # return probability of taking action, and hidden state
+    
+    def find_x_y(self, api, rows, col_choice=max):
+        # Any openings in rows?
+        openings_in_rows = False
+        for row in rows:
+            if len(api.getUnOccupied(api.getMyBuildings()[row])) > 0:
+                openings_in_rows = True
+                break
+        
+        found_x_y = False
 
-    def policy_backward(self, eph, epx, epdlogp):
-        """ backward pass. (eph is array of intermediate hidden states) """
-        """ Manual implementation of a backward prop"""
-        """ It takes an array of the hidden states that corresponds to all the images that were
-        fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
-        dW2 = np.dot(eph.T, epdlogp).ravel()
-        dh = np.outer(epdlogp, self.model['W2'])
-        dh[eph <= 0] = 0 # backpro prelu
-        dW1 = np.dot(dh.T, epx)
-        return {'W1':dW1, 'W2':dW2}
+        while not found_x_y:
+            if openings_in_rows:
+                y = random.choice(rows)
+            else:
+                y = random.randint(0, int(api.getGameHeight()-1))
+            
+            try:
+                x = col_choice(api.getUnOccupied(api.getMyBuildings()[y]))
+                found_x_y = True
+            except:
+                pass
+
+        return x, y
     
     def doDefense(self, stateFeatures, api):
         building = 0
@@ -98,23 +114,13 @@ class ShallowMindBot:
             # put in front of other buildings if possible
             rows_w_my_other_buildings = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['attack'])
             rows_w_my_other_buildings.extend(self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['energy']))
-            try:
-                y = random.choice(rows_w_my_other_buildings)
-            except:
-                y = random.randint(0, int(api.getGameHeight()-1))
+            
+            x, y = self.find_x_y(api, rows_w_my_other_buildings, max)
         else:
             # block row where under attack
             rows_w_opp_attacking = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['attack'])
-            try:
-                y = random.choice(rows_w_opp_attacking)
-            except:
-                y = random.randint(0, int(api.getGameHeight()-1))
-
-        try:
-            x = max(api.getUnOccupied(api.getMyBuildings()[y]))
-        except:
-            y = random.randint(0, int(api.getGameHeight()-1))
-            x = max(api.getUnOccupied(api.getMyBuildings()[y]))
+            
+            x, y = self.find_x_y(api, rows_w_opp_attacking, max)
 
         return api.createCommand(x,y,building)
 
@@ -124,39 +130,24 @@ class ShallowMindBot:
         # If row has Tesla, attack it
         if stateFeatures['oppNumTesla'] > 0:
             rows_with_tesla = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['tesla'])
-            y = rows_with_tesla[0]
+            
+            x, y = self.find_x_y(api, rows_with_tesla, min)
 
         # Randomly pick between these more offensive and defensive attacks
         rand_num = random.random()
         if rand_num < 0.33:
             # If under attack from row, attack it
             rows_under_attack = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['attack'])
-            try:
-                y = random.choice(rows_under_attack)
-            except IndexError:
-                y = random.randint(0, int(api.getGameHeight()-1))
+            x, y = self.find_x_y(api, rows_under_attack, min)
         elif rand_num < 0.66:
             # If row undefended by opponent, attack it
             rows_defended = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['defense'])
             rows_undefended = [row for row in range(int(api.getGameHeight()-1)) if row not in rows_defended]
-            try:
-                y = random.choice(rows_undefended)
-            except IndexError:
-                y = random.randint(0, int(api.getGameHeight()-1))
+            x, y = self.find_x_y(api, rows_undefended, min)
         else:
             # If energy in row, attack it
             rows_with_energy = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['energy'])
-            try:
-                y = random.choice(rows_with_energy)
-            except IndexError:
-                y = random.randint(0, int(api.getGameHeight()-1))
-
-        # Place behind defense or other building if possible
-        try:
-            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
-        except:
-            y = random.randint(0, int(api.getGameHeight()-1))
-            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
+            x, y = self.find_x_y(api, rows_with_energy, min)
 
         return api.createCommand(x,y,building)
 
@@ -165,17 +156,7 @@ class ShallowMindBot:
 
         # place as far back as possible, and behind defense if possible
         rows_with_defense = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['defense'])
-        try:
-            y = random.choice(rows_with_defense)
-        except IndexError:
-            y = random.randint(0, int(api.getGameHeight()-1))
-
-        # Place behind defense if possible
-        try:
-            x = min(api.getUnOccupied(api.getMyBuildings()[y])) # min = far back
-        except:
-            y = random.randint(0, int(api.getGameHeight()-1))
-            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
+        x, y = self.find_x_y(api, rows_with_defense, min)
 
         return api.createCommand(x,y,building)
 
@@ -191,21 +172,20 @@ class ShallowMindBot:
 
         return api.createCommand(x,y,building)
 
+    def max_behind(self, unocc_cols, num_cols=8):
+        if len(unocc_cols)==0:
+            raise ValueError
+        else:
+            occ_cols = [col for col in range(num_cols) if col not in unocc_cols]
+            col_choice = max([unocc_col for unocc_col in unocc_cols if unocc_col<max(occ_cols)])
+            return col_choice
+    
     def doTesla(self, stateFeatures, api):
         building = 4
         
         # go as close to the front as possible, while being behind defense
         rows_with_defense = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['defense'])
-        try:
-            y = rows_with_defense[-1] # arbitrary
-        except IndexError:
-            y = random.randint(0, int(api.getGameHeight()-1))
-
-        # Place behind defense if possible
-        try:
-            x = max(api.getUnOccupied(api.getMyBuildings()[y])) # close to front, but defense should be closer
-        except:
-            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
+        x, y = self.find_x_y(api, rows_with_defense, self.max_behind)
 
         return api.createCommand(x,y,building)
 
@@ -327,10 +307,10 @@ class ShallowMindBot:
         possible_action_types = set(range(NUM_ACTION_TYPES))
 
         # Many buildings to destroy?
-        if (
-            stateFeatures['myNumTesla'] + stateFeatures['myNumEnergy'] + stateFeatures['myNumAttack'] + stateFeatures['myNumDefense']
-        ) < 10:
-            possible_action_types.remove(3)
+        # if (
+        #     stateFeatures['myNumTesla'] + stateFeatures['myNumEnergy'] + stateFeatures['myNumAttack'] + stateFeatures['myNumDefense']
+        # ) < 20:
+        possible_action_types.remove(3)
 
         # Able to do iron curtain?
         if (~stateFeatures['myIronCurtainAvailable']) | (stateFeatures['myEnergy'] < api.game_state['gameDetails']['ironCurtainStats']['price']):
@@ -358,13 +338,9 @@ class ShallowMindBot:
         # determine possible actions
         possible_action_types = self.computePossibleActiontypes(state_features, api)
         
-        action_type_probabilities_all, hidden_layer = self.policy_forward(state_features)
-
-        # here is where the network(s) will go
-        action_type_probabilities_allowed_unnormed = np.array([action_type_probabilities_all[i] for i in range(action_type_probabilities_all.shape[0]) if i in possible_action_types])
-        action_type_probabilities = action_type_probabilities_allowed_unnormed/sum(action_type_probabilities_allowed_unnormed)
-
-        return possible_action_types, action_type_probabilities
+        action_type_probabilities, hidden_layer = self.policy_forward(state_features, possible_action_types)
+        
+        return possible_action_types, action_type_probabilities, hidden_layer
         
     def doTurn(self, api):
         '''
@@ -390,7 +366,7 @@ class ShallowMindBot:
         state_features = self.computeStateFeatures(api)
 
         # Convert state features to probability of each action type
-        possible_action_types, action_type_probabilities = self.computeActionTypeProbabilities(state_features, api)
+        possible_action_types, action_type_probabilities, hidden_layer = self.computeActionTypeProbabilities(state_features, api)
 
         # Randomize to select action type
         action_type_choice = random.choices(
@@ -401,6 +377,23 @@ class ShallowMindBot:
 
         print('Selected action type {} from options {} with probabilities {}'.format(action_type_choice, possible_action_types, action_type_probabilities))
 
+        # Record things when training
+        if training:
+            try:
+                max_game = max([int(d.split('_')[1]) for d in os.listdir(os.path.join('.','logs')) if os.path.isdir(os.path.join('.','logs',d))])
+            except ValueError:
+                max_game = -1
+
+            if state_features['round'] == 0:
+                game_num = max_game + 1
+                os.makedirs(os.path.join('.','logs','game_{}'.format(game_num)))
+            else:
+                game_num = max_game
+            
+            # Store results of this step
+            with open(os.path.join('.','logs','game_{}'.format(game_num),'round_{}.pkl'.format(state_features['round'])), 'wb') as f:
+                pickle.dump((state_features, possible_action_types, action_type_probabilities, hidden_layer, action_type_choice),f)
+        
         # Execute and return action type
         do_action_type_method = self.idx2actionType[action_type_choice]
 
