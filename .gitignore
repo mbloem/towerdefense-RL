@@ -8,3 +8,4 @@ visualizer/
 *.bat
 *.zip
 */visualizer/
+*/.ipynb_checkpoints/
