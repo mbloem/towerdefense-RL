@@ -2,7 +2,7 @@
 
 My employer holds an optional annual programming game, and in 2019 we could write "bots" to play a game called Tower Defense.
 I used this as an excuse to try out a reinforcement learning technique.
-In particular, I implemented a version of vanilla Policy Gradients using code inspired by Andrei K's Pong from Pixels.
+In particular, I implemented a simple version of [vanilla Policy Gradients](https://spinningup.openai.com/en/latest/algorithms/vpg.html) using code inspired by [this elaboration of Andrej Karpathy's Pong from Pixels gist](https://github.com/omkarv/pong-from-pixels/blob/master/pong-from-pixels.py).
 My parameterized policy requires a probability of selecting each of several types of actions (e.g., build an "attack" building, build a "defense" building), and the goal of the Policy Gradients is to learn these probabilities, which can vary as the state evolves as specified by a neural network.
 More specifically, I built a ~30-state vector describing the state and then pass that through the neural network to get the corresponding probabilities of each action type.
 I used a very shallow neural network with just one hidden layer in my policy (and so I named my bot "shallowmind"), and I implemented the gradient updates using NumPy as a learning exercise.
