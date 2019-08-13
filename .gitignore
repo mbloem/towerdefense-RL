@@ -6,4 +6,5 @@ visualizer/
 *.properties
 *.jar
 *.bat
-
+*.zip
+*/visualizer/
