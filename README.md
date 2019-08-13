@@ -45,8 +45,10 @@ conda env create -f environment.yml
  	
 Copy the python3 starter-bot folder, be sure to keep the TowerDefense.py and TowerDefenseHelper.py files. 
 Copy the StarterBot.py with the name of your choice. Modify the class name inside the copied file
-Update the main initialization at the bottome to pass your new bot to the TowerDefense.run method
-ex. TowerDefense.run(MyNewBot())
+Update the main initialization at the bottome to pass your new bot to the TowerDefense.run method:
+```
+TowerDefense.run(MyNewBot())
+```
 
 ## Running the sample bot:
 
