@@ -1,0 +1,9 @@
+{
+  "round-state-output-location": "./visualizer/tower-defence-matches",
+  "game-config-file-location": "./game-config.properties",
+  "verbose-mode": false,
+  "max-runtime-ms": 2000,
+  "player-a": ".",
+  "player-b": "../shallowmind_v0",
+  "is-tournament-mode": false
+}

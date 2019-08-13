@@ -9,3 +9,4 @@ visualizer/
 *.zip
 */visualizer/
 */.ipynb_checkpoints/
+*/logs/
