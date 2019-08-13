@@ -6,7 +6,7 @@ import time
 
 startTime = time.time()
 
-#import numpy as np
+import numpy as np
 
 import json
 import os
@@ -24,6 +24,13 @@ BUILDING_TO_IDX = {
     'attack': 1,
     'defense': 2,
 }
+
+# hyperparameters to tune
+H = 200 # number of hidden layer neurons
+batch_size = 10 # used to perform a RMS prop param update every batch_size steps
+learning_rate = 1e-3 # learning rate used in RMS prop
+gamma = 0.99 # discount factor for reward
+decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 class ShallowMindBot:
     
@@ -45,18 +52,28 @@ class ShallowMindBot:
         building = 0
 
         # put as close to the front as possible (max x)
-        # put in front of other buildings if possible
-        rows_w_my_other_buildings = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['attack'])
-        rows_w_my_other_buildings.extend(self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['energy']))
-        try:
-            y = rows_w_my_other_buildings[-1] # randomly picking last
-        except:
-            y = random.randint(0, int(api.getGameHeight()-1))
+        rand_num = random.random()
+        if rand_num < 0.33:
+            # put in front of other buildings if possible
+            rows_w_my_other_buildings = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['attack'])
+            rows_w_my_other_buildings.extend(self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['energy']))
+            try:
+                y = random.choice(rows_w_my_other_buildings)
+            except:
+                y = random.randint(0, int(api.getGameHeight()-1))
+        else:
+            # block row where under attack
+            rows_w_opp_attacking = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['attack'])
+            try:
+                y = random.choice(rows_w_opp_attacking)
+            except:
+                y = random.randint(0, int(api.getGameHeight()-1))
 
         try:
             x = max(api.getUnOccupied(api.getMyBuildings()[y]))
         except:
-            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
+            y = random.randint(0, int(api.getGameHeight()-1))
+            x = max(api.getUnOccupied(api.getMyBuildings()[y]))
 
         return api.createCommand(x,y,building)
 
@@ -74,7 +91,7 @@ class ShallowMindBot:
             # If under attack from row, attack it
             rows_under_attack = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['attack'])
             try:
-                y = rows_under_attack[0]
+                y = random.choice(rows_under_attack)
             except IndexError:
                 y = random.randint(0, int(api.getGameHeight()-1))
         elif rand_num < 0.66:
@@ -82,14 +99,14 @@ class ShallowMindBot:
             rows_defended = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['defense'])
             rows_undefended = [row for row in range(int(api.getGameHeight()-1)) if row not in rows_defended]
             try:
-                y = rows_undefended[0] # arbitrary
+                y = random.choice(rows_undefended)
             except IndexError:
                 y = random.randint(0, int(api.getGameHeight()-1))
         else:
             # If energy in row, attack it
             rows_with_energy = self.getLanesWithOppBuilding(api, BUILDING_TO_IDX['energy'])
             try:
-                y = rows_with_energy[0]
+                y = random.choice(rows_with_energy)
             except IndexError:
                 y = random.randint(0, int(api.getGameHeight()-1))
 
@@ -97,7 +114,8 @@ class ShallowMindBot:
         try:
             x = min(api.getUnOccupied(api.getMyBuildings()[y]))
         except:
-            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
+            y = random.randint(0, int(api.getGameHeight()-1))
+            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
 
         return api.createCommand(x,y,building)
 
@@ -107,7 +125,7 @@ class ShallowMindBot:
         # place as far back as possible, and behind defense if possible
         rows_with_defense = self.getLanesWithMyBuilding(api, BUILDING_TO_IDX['defense'])
         try:
-            y = rows_with_defense[-1] # arbitrary
+            y = random.choice(rows_with_defense)
         except IndexError:
             y = random.randint(0, int(api.getGameHeight()-1))
 
@@ -115,7 +133,8 @@ class ShallowMindBot:
         try:
             x = min(api.getUnOccupied(api.getMyBuildings()[y])) # min = far back
         except:
-            x = random.choice(api.getUnOccupied(api.getMyBuildings()[y]))
+            y = random.randint(0, int(api.getGameHeight()-1))
+            x = min(api.getUnOccupied(api.getMyBuildings()[y]))
 
         return api.createCommand(x,y,building)
 
