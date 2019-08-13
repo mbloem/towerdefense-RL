@@ -1,8 +1,8 @@
 {
 	"author": "Michael Bloem",
-	"email": "john.doe@example.com",
+	"email": "",
 	"nickName": "ShallowMind",
 	"botLocation": "/",
-	"botFileName": "shallowmind.py",
+	"botFileName": "ShallowMindBot.py",
 	"botLanguage": "python3"
 }
